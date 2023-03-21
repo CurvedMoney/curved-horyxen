@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity >=0.7.5;
 
-
-/// @custom:security-contact info@curved.money
 interface ERC20Prismatic {
     /**
      * @dev Returns the address of the current owner.

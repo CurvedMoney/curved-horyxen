@@ -1,18 +1,16 @@
-pragma solidity ^0.8.4;
+pragma solidity >=0.7.5;
 
 // SPDX-License-Identifier: Unlicensed
 
-import "../utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "../uniswap/IUniswapV2Router02.sol";
-import "../uniswap/IUniswapV2Factory.sol";
-import "../uniswap/IUniswapV2Pair.sol";
 
 import "./IRateOracle.sol";
 import "./IERC20Prismatic.sol";
+import "./ILiquidityManager.sol";
 
 /*
  * @dev ERC20Radiate is a yield protocol with configurable supply-dependent rated contract functions
@@ -282,8 +280,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * `operationalAddress` - Address receiving realtime wraps from operational account - configurable.
      * `liquidationPath` - Uniswap compatible path for unwraps and liquidations.
      * `reconciliationPath` - Uniswap compatible path for reconciling withdrawals.
-     * `routerAddress` - Uniswap exchange address - configurable.
-     * `pairAddress` - Uniswap exchange pair address - configurable.
      */
     uint8 public operationalLedgerLength;
     mapping (uint => address payable) operationalAddress;
@@ -291,8 +287,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
-    address public routerAddress;
-    address public pairAddress;
 
     /**
      * @dev Session-based index tracking treasury claimants, sessions are iterated on resetClaimants
@@ -300,8 +294,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     uint256 public claimSession;
 
     IRateOracle public rateOracle;
-    IUniswapV2Router02 public uniswapV2Router;
-    IUniswapV2Pair uniswapV2Pair;
+    ILiquidityManager public liquidityManager;
 
     ERC20 internal radiateSource;
     ERC20Prismatic internal radiateTarget;
@@ -337,7 +330,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     bytes32 public constant TRANSACTOR_ROLE = keccak256("TRANSACTOR_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
 
-    constructor(address _radiateSourceAddress, address _radiateTargetAddress, uint256 _initialRate, address _routerAddress, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
+    constructor(address _radiateSourceAddress, address _radiateTargetAddress, uint256 _initialRate, address _liquidityManagerAddress, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
         flags[8] = true;                    // Instant rebate enabled
@@ -376,26 +369,26 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
         radiateTarget = ERC20Prismatic(radiateTargetAddress);
         radiateTarget.approve(_msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
-        routerAddress = _routerAddress;
-        uniswapV2Router = IUniswapV2Router02(routerAddress);
+        liquidityManager = ILiquidityManager(_liquidityManagerAddress);
 
         operationalLedgerLength = 1;
         operationalAddress[0] = payable(_msgSender());
 
-        pairAddress = IUniswapV2Factory(uniswapV2Router.factory()).getPair(_radiateTargetAddress, _radiateSourceAddress);
+        //@TODO - Update get pair code.
+        /* _ = getPair(_radiateTargetAddress, _radiateSourceAddress);*/
 
-        if (pairAddress == address(0)) {
+        //@TODO - Update pair address reference
+        /*if (_ == address(0)) {
             flags[14] = false;
-            pairAddress = IUniswapV2Factory(uniswapV2Router.factory()).createPair(_radiateTargetAddress, _radiateSourceAddress);
-            uniswapV2Pair = IUniswapV2Pair(pairAddress);
+            //@TODO - Add liquidity and mint here.
         } else {
             flags[14] = true;
-            uniswapV2Pair = IUniswapV2Pair(pairAddress);
-        }
+            //@TODO - Add liquidity and mint here.
+        }*/
     }
 
     /**
-     * @dev Fallback to receive from uniswapV2Router when swapping
+     * @dev Fallback to receive from LP when swapping
      */
     receive() external payable {}
 
@@ -615,29 +608,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
         treasurerCollection_[_treasurer].status = _action;
         treasurerCollection_[_treasurer].reserveLimit = _limit;
         treasurerCollection_[_treasurer].contractAddress = _treasurer;
-    }
-
-    /**
-     * @dev Pair address is configurable
-     */
-    function updateUniswapPair(address _radiateTargetAddress,address _radiateSourceAddress) public onlyRole(GOVERNOR_ROLE) {
-        address _pairAddress = IUniswapV2Factory(uniswapV2Router.factory()).getPair(_radiateTargetAddress, _radiateSourceAddress);
-
-        if (_pairAddress == address(0)) {
-            pairAddress = IUniswapV2Factory(uniswapV2Router.factory()).createPair(_radiateTargetAddress, _radiateSourceAddress);
-            uniswapV2Pair = IUniswapV2Pair(pairAddress);
-            flags[14] = false;
-        } else {
-            flags[14] = true;
-        }
-    }
-
-    /**
-     * @dev Update token router to latest.
-     */
-    function updateUniswapRouter(address _router) public onlyRole(GOVERNOR_ROLE) {
-        require(_router != address(0), "Router must be set.");
-        uniswapV2Router = IUniswapV2Router02(_router);
     }
 
     /**
@@ -994,7 +964,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Method to view the current eth stored in the contract
      */
     function radiateBalance() public view returns (uint256) {
-        return radiateTarget.balanceOf(pairAddress);
+        //@TODO - Update token balance code
+       /* return radiateTarget.balanceOf(_);*/
+        return 0;
     }
 
     /**
@@ -1194,8 +1166,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
         uint256 operationalIncome = incomingRate.mul(rateByAccount(_msgSender(), 0)).div(100).div(_base);
 
         if (flags[15]) {
-            (uint112 reserveA, uint112 reserveB,) = uniswapV2Pair.getReserves();
-            incomingRate = incomingRate.mul(reserveA).div(reserveB);
+            //@TODO - Fix reserve checks
+            /*(uint112 reserveA, uint112 reserveB,) = getReserves();
+            incomingRate = incomingRate.mul(reserveA).div(reserveB);*/
         }
 
         operationalReserve[claimSession] = operationalReserve[claimSession].add(operationalIncome);
@@ -1248,13 +1221,15 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Returns liquidity rate for {radiateTarget} using inverse.
      */
     function getLiquidityRateInverse() internal view returns (uint256) {
-        (uint112 reserveA, uint112 reserveB,) = uniswapV2Pair.getReserves();
+        //@TODO - Fix reserve checks
+        /*(uint112 reserveA, uint112 reserveB,) = getReserves();
 
         if (uint256(reserveA).mul(_base).div(reserveB) > liquidityRateLimit_) {
             return liquidityRateLimit_;
         }
 
-        return uint256(reserveA).mul(_base).div(reserveB).mul(100);
+        return uint256(reserveA).mul(_base).div(reserveB).mul(100);*/
+        return 0;
     }
 
     /**
@@ -1263,15 +1238,19 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     function wrapTokens(address _receiver, uint256 _tokens) internal returns (uint256) {
         updateUsers(_receiver);
 
-        if (radiateSource.allowance(address(this), routerAddress) < _tokens) {
-            radiateSource.approve(routerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        //@TODO - Update allowance checks to support V3
+        /*if (radiateSource.allowance(address(this), _) < _tokens) {
+            radiateSource.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
         }
 
-        if (radiateTarget.allowance(address(this), routerAddress) < _tokens) {
-            radiateTarget.approve(routerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
-        }
+        if (radiateTarget.allowance(address(this), _) < _tokens) {
+            radiateTarget.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        }*/
 
-        (uint112 reserveA, uint112 reserveB,) = uniswapV2Pair.getReserves();
+        //@TODO - Fix reserve checks
+        uint112 reserveA = 0;
+        uint112 reserveB = 0;
+        /*(uint112 reserveA, uint112 reserveB,) = getReserves();*/
 
         uint256 _taxedRadiateTokens;
 
@@ -1282,11 +1261,14 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
             radiateTarget.mint(address(this), _tokens);
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
-            uniswapV2Router.addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));
+            //@TODO - Add V3 liquidity add function
+            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
-            _taxedRadiateTokens = uniswapV2Router.quote(_tokens, reserveA, reserveB);
+            //@TODO - Add V3 liquidity quotes
+            /*_taxedRadiateTokens = quote(_tokens, reserveA, reserveB);*/
             radiateTarget.mint(address(this), _taxedRadiateTokens);
-            uniswapV2Router.addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));
+            //@TODO - Add V3 liquidity add function
+            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
             if (flags[15]) {
                 _taxedRadiateTokens = _taxedRadiateTokens.mul(reserveA).div(reserveB);
@@ -1340,15 +1322,17 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Reconcile withdrawn yield against {reconciliationPath} LP
      */
     function reconcile(uint256 _amount, address[] memory _reconciliationPath) internal returns (uint256) {
-        require(radiateTarget.approve(address(uniswapV2Router), _amount), "ERC20Radiate: Router approval is required.");
+        //@TODO - Switch code to support V3 router
+        /*require(radiateTarget.approve(address(), _amount), "ERC20Radiate: Router approval is required.");*/
 
-        uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        //@TODO - Switch code to support V3 swaps
+        /*swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount,
             0,
             _reconciliationPath,
             _msgSender(),
             block.timestamp.add(20 minutes)
-        );
+        );*/
 
         emit onReconciliation(_amount, block.timestamp);
 
