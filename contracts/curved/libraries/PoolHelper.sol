@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.7.5;
 
-import "@openzeppelin/contracts/math/Math.sol";
+import "../contracts/utils/math/Math.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 
 library PoolHelper {
