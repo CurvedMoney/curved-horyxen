@@ -7,12 +7,9 @@ module.exports = async function(deployer) {
   const _initialRate = BigInt(1e18).toString();
   const _radiatorName = "Horyxen";
   const _radiatorSymbol = "HORYXEN";
-  const _factory = "";
-  const _WETH = "";
 
-  deployer.deploy(LiquidityManager);
-  
-  const liquidityContract = await LiquidityManager.deployed();
+  const _liquidityContract = await LiquidityManager.deployed();
 
-  deployer.deploy(Horyxen, _radiateSourceAddress, _radiateTargetAddress, liquidityContract.address, _initialRate, _radiatorName, _radiatorSymbol);
+  console.log("_liquidityContract.address", _liquidityContract.address);
+  await deployer.deploy(Horyxen, _radiateSourceAddress, _radiateTargetAddress, _liquidityContract.address, _initialRate, _radiatorName, _radiatorSymbol);
 };

@@ -1,16 +1,20 @@
-pragma solidity >=0.7.5;
-
 // SPDX-License-Identifier: Unlicensed
+pragma solidity >=0.7.5;
+pragma abicoder v2;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+import "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol";
 
-import "./IRateOracle.sol";
-import "./IERC20Prismatic.sol";
-import "./ILiquidityManager.sol";
+import "./interfaces/IRateOracle.sol";
+import "./interfaces/IERC20Prismatic.sol";
+import "./interfaces/ILiquidityManager.sol";
+import "./libraries/PoolHelper.sol";
 
 /*
  * @dev ERC20Radiate is a yield protocol with configurable supply-dependent rated contract functions
@@ -287,12 +291,16 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
+    address public poolAddress;
 
     /**
      * @dev Session-based index tracking treasury claimants, sessions are iterated on resetClaimants
      */
     uint256 public claimSession;
 
+    IQuoterV2 public v3Quoter;
+    IUniswapV3Factory public v3Factory;
+    IUniswapV3Pool public v3Pool;
     IRateOracle public rateOracle;
     ILiquidityManager public liquidityManager;
 
@@ -330,7 +338,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     bytes32 public constant TRANSACTOR_ROLE = keccak256("TRANSACTOR_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
 
-    constructor(address _radiateSourceAddress, address _radiateTargetAddress, uint256 _initialRate, address _liquidityManagerAddress, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
+    constructor(address _radiateSourceAddress, address _radiateTargetAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
         flags[8] = true;                    // Instant rebate enabled
@@ -369,22 +377,23 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
         radiateTarget = ERC20Prismatic(radiateTargetAddress);
         radiateTarget.approve(_msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
+        v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
+        v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
 
         operationalLedgerLength = 1;
         operationalAddress[0] = payable(_msgSender());
 
-        //@TODO - Update get pair code.
-        /* _ = getPair(_radiateTargetAddress, _radiateSourceAddress);*/
+        poolAddress = v3Factory.getPool(radiateSourceAddress, radiateTargetAddress, 1e4);
 
-        //@TODO - Update pair address reference
-        /*if (_ == address(0)) {
+        if (poolAddress == address(0)) {
             flags[14] = false;
-            //@TODO - Add liquidity and mint here.
+            poolAddress = v3Factory.createPool(radiateSourceAddress, radiateTargetAddress, 1e4);
         } else {
             flags[14] = true;
-            //@TODO - Add liquidity and mint here.
-        }*/
+        }
+
+        v3Pool = IUniswapV3Pool(poolAddress);
     }
 
     /**
@@ -964,9 +973,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Method to view the current eth stored in the contract
      */
     function radiateBalance() public view returns (uint256) {
-        //@TODO - Update token balance code
-       /* return radiateTarget.balanceOf(_);*/
-        return 0;
+        return radiateTarget.balanceOf(poolAddress);
     }
 
     /**
@@ -1166,9 +1173,8 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
         uint256 operationalIncome = incomingRate.mul(rateByAccount(_msgSender(), 0)).div(100).div(_base);
 
         if (flags[15]) {
-            //@TODO - Fix reserve checks
-            /*(uint112 reserveA, uint112 reserveB,) = getReserves();
-            incomingRate = incomingRate.mul(reserveA).div(reserveB);*/
+            (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
+            incomingRate = incomingRate.mul(uint256(reserve0)).div(uint256(reserve1));
         }
 
         operationalReserve[claimSession] = operationalReserve[claimSession].add(operationalIncome);
@@ -1221,15 +1227,13 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Returns liquidity rate for {radiateTarget} using inverse.
      */
     function getLiquidityRateInverse() internal view returns (uint256) {
-        //@TODO - Fix reserve checks
-        /*(uint112 reserveA, uint112 reserveB,) = getReserves();
+        (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
 
-        if (uint256(reserveA).mul(_base).div(reserveB) > liquidityRateLimit_) {
+        if ((uint256(reserve0)).mul(_base).div(uint256(reserve1)) > liquidityRateLimit_) {
             return liquidityRateLimit_;
         }
 
-        return uint256(reserveA).mul(_base).div(reserveB).mul(100);*/
-        return 0;
+        return (uint256(reserve0)).mul(_base).div(uint256(reserve1)).mul(100);
     }
 
     /**
@@ -1238,19 +1242,18 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
     function wrapTokens(address _receiver, uint256 _tokens) internal returns (uint256) {
         updateUsers(_receiver);
 
-        //@TODO - Update allowance checks to support V3
-        /*if (radiateSource.allowance(address(this), _) < _tokens) {
+        // TODO - Update allowance checks to support V3 router
+        /*
+        if (radiateSource.allowance(address(this), _) < _tokens) {
             radiateSource.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
         }
 
         if (radiateTarget.allowance(address(this), _) < _tokens) {
             radiateTarget.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
-        }*/
+        }
+        */
 
-        //@TODO - Fix reserve checks
-        uint112 reserveA = 0;
-        uint112 reserveB = 0;
-        /*(uint112 reserveA, uint112 reserveB,) = getReserves();*/
+        (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
 
         uint256 _taxedRadiateTokens;
 
@@ -1261,17 +1264,26 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
             radiateTarget.mint(address(this), _tokens);
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
-            //@TODO - Add V3 liquidity add function
+            // TODO - Add V3 liquidity add function
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
-            //@TODO - Add V3 liquidity quotes
-            /*_taxedRadiateTokens = quote(_tokens, reserveA, reserveB);*/
+            // TODO - Add V3 liquidity quotes
+            (uint256 amountOut,,,) = v3Quoter.quoteExactInputSingle(IQuoterV2.QuoteExactInputSingleParams({
+                tokenIn: radiateSourceAddress,
+                tokenOut: address(this),
+                fee: 3000,
+                amountIn: _tokens,
+                sqrtPriceLimitX96: 0
+            }));
+
+            _taxedRadiateTokens = amountOut;
+
             radiateTarget.mint(address(this), _taxedRadiateTokens);
-            //@TODO - Add V3 liquidity add function
+            // TODO - Add V3 liquidity add function
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
             if (flags[15]) {
-                _taxedRadiateTokens = _taxedRadiateTokens.mul(reserveA).div(reserveB);
+                _taxedRadiateTokens = _taxedRadiateTokens.mul(uint256(reserve0)).div(uint256(reserve1));
             }
         }
 
@@ -1322,10 +1334,10 @@ contract ERC20Radiate is ERC20, ERC20Burnable, AccessControl {
      * @dev Reconcile withdrawn yield against {reconciliationPath} LP
      */
     function reconcile(uint256 _amount, address[] memory _reconciliationPath) internal returns (uint256) {
-        //@TODO - Switch code to support V3 router
+        // TODO - Switch code to support V3 router
         /*require(radiateTarget.approve(address(), _amount), "ERC20Radiate: Router approval is required.");*/
 
-        //@TODO - Switch code to support V3 swaps
+        // TODO - Switch code to support V3 swaps
         /*swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount,
             0,

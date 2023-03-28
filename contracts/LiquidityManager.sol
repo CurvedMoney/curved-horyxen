@@ -4,8 +4,8 @@ pragma abicoder v2;
 
 import '@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol';
 import '@uniswap/v3-core/contracts/libraries/TickMath.sol';
-import './liquidity/libraries/TransferHelper.sol';
 import './liquidity/interfaces/INonfungiblePositionManager.sol';
+import './liquidity/libraries/TransferHelper.sol';
 
 contract LiquidityManager is IERC721Receiver {
     address public constant nonfungiblePositionManager = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
