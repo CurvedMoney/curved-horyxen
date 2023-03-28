@@ -7,13 +7,13 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/IQuoterV2.sol";
 
 import "./contracts/access/AccessControl.sol";
 import "./contracts/utils/math/SafeMath.sol";
-import "./interfaces/IRateOracle.sol";
 import "./interfaces/IERC20Prismatic.sol";
 import "./interfaces/ILiquidityManager.sol";
+import "./interfaces/IQuoterV2.sol";
+import "./interfaces/IRateOracle.sol";
 import "./libraries/PoolHelper.sol";
 
 /*
