@@ -18,12 +18,12 @@ module.exports = {
     networks: {
         goerli: {
             provider: () => new HDWalletProvider(
-                MNEMONIC, `https://goerli.infura.io/v3/${PROJECT_ID}`
+                MNEMONIC, `https://goerli.infura.io/v3/${PROJECT_ID}`,
             ),
             network_id: 5,
             gasPrice: 10e9,
-            skipDryRun: true
-        }
+            skipDryRun: true,
+        },
     },
 
     /**
@@ -31,7 +31,8 @@ module.exports = {
      */
 
     mocha: {
-        // timeout: 100000
+        timeout: 100000,
+        reporter: "eth-gas-reporter",
     },
 
     /**
@@ -46,10 +47,10 @@ module.exports = {
                 // See the solidity docs for advice about optimization and evmVersion
                 optimizer: {
                     enabled: true,
-                    runs: 1
-                }
-            }
-        }
+                    runs: 1,
+                },
+            },
+        },
         // Truffle DB is currently disabled by default; to enable it, change enabled:
         // false to enabled: true. The default storage location can also be
         // overridden by specifying the adapter settings, as shown in the commented code below.
@@ -76,7 +77,7 @@ module.exports = {
      */
 
     plugins: [
-        "truffle-plugin-verify"
+        "truffle-plugin-verify",
     ],
 
     /**
@@ -85,7 +86,7 @@ module.exports = {
 
     api_keys: {
         etherscan: ETHERSCAN_API,
-        goerli_etherscan: GOERLI_ETHERSCAN_API
+        goerli_etherscan: GOERLI_ETHERSCAN_API,
     },
 
     /**
@@ -94,8 +95,8 @@ module.exports = {
 
     verify: {
         proxy: {
-            host: '127.0.0.1',
-            port: '24012'
-        }
-    }
+            host: "127.0.0.1",
+            port: "24012",
+        },
+    },
 };
