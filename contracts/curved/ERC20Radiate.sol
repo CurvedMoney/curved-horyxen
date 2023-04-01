@@ -287,7 +287,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     uint8 public operationalLedgerLength;
     mapping (uint => address payable) operationalAddress;
-    address payable public radiateTargetAddress;
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
@@ -305,7 +304,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     ILiquidityManager public liquidityManager;
 
     ERC20 internal radiateSource;
-    ERC20Prismatic internal radiateTarget;
 
     uint256 public claimType;
 
@@ -338,7 +336,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     bytes32 public constant TRANSACTOR_ROLE = keccak256("TRANSACTOR_ROLE");
     bytes32 public constant TREASURER_ROLE = keccak256("TREASURER_ROLE");
 
-    constructor(address _radiateSourceAddress, address _radiateTargetAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
+    constructor(address _radiateSourceAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
         flags[8] = true;                    // Instant rebate enabled
@@ -373,9 +371,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         radiateSource = ERC20(radiateSourceAddress);
         radiateSource.approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
-        radiateTargetAddress = payable(_radiateTargetAddress);
-        radiateTarget = ERC20Prismatic(radiateTargetAddress);
-        radiateTarget.approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        /*radiateTargetAddress = payable(address(this));
+        radiateTarget = ERC20Burnable(radiateTargetAddress);
+        approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);*/
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -384,11 +382,11 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         operationalLedgerLength = 1;
         operationalAddress[0] = payable(__msgSender());
 
-        poolAddress = v3Factory.getPool(radiateSourceAddress, radiateTargetAddress, 1e4);
+        poolAddress = v3Factory.getPool(radiateSourceAddress, address(this), 1e4);
 
         if (poolAddress == address(0)) {
             flags[14] = false;
-            poolAddress = v3Factory.createPool(radiateSourceAddress, radiateTargetAddress, 1e4);
+            poolAddress = v3Factory.createPool(radiateSourceAddress, address(this), 1e4);
         } else {
             flags[14] = true;
         }
@@ -520,9 +518,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      * @dev Reserve token is configurable
      */
     function updateRadiateTargetAddress(address _radiateTargetAddress) public onlyRole(GOVERNOR_ROLE) {
-        radiateTargetAddress = payable(_radiateTargetAddress);
+        /*radiateTargetAddress = payable(_radiateTargetAddress);
         radiateTarget = ERC20Prismatic(radiateTargetAddress);
-        radiateTarget.approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        radiateTarget.approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);*/
     }
 
     /**
@@ -648,7 +646,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         operationalReserve[claimSession] = operationalReserve[claimSession].sub(_claims);
 
-        radiateTarget.mint(__msgSender(), _claims);
+        _mint(__msgSender(), _claims);
 
         claimsLedger_[claimSession][__msgSender()] = 0;
 
@@ -773,7 +771,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         // Reconciliation flag
         if (flags[10] == false) {
-            radiateTarget.mint(__msgSender(), _taxedRadiateYield);
+            _mint(__msgSender(), _taxedRadiateYield);
 
             // Update account statements
             statementLedger_[__msgSender()].withdrawn = statementLedger_[__msgSender()].withdrawn.add(_taxedRadiateYield);
@@ -787,7 +785,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             emit onWithdraw(__msgSender(), _taxedRadiateYield, block.timestamp);
         } else {
-            radiateTarget.mint(address(this), _taxedRadiateYield);
+            _mint(address(this), _taxedRadiateYield);
 
             reconcile(_taxedRadiateYield, reconciliationPath);
 
@@ -973,7 +971,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      * @dev Method to view the current eth stored in the contract
      */
     function radiateBalance() public view returns (uint256) {
-        return radiateTarget.balanceOf(poolAddress);
+        return balanceOf(poolAddress);
     }
 
     /**
@@ -1098,7 +1096,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     function yieldRate(address user) public view returns (uint256) {
         if (flags[11]) {
-            return rateOracle.getEasingRate(user, radiateSourceAddress, radiateTargetAddress);
+            return rateOracle.getEasingRate(user, radiateSourceAddress, address(this));
         } else {
             uint256 allotted;
 
@@ -1261,7 +1259,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             flags[14] = true;
             _taxedRadiateTokens = _tokens;
 
-            radiateTarget.mint(address(this), _tokens);
+            _mint(address(this), _tokens);
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
@@ -1278,7 +1276,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             _taxedRadiateTokens = amountOut;
 
-            radiateTarget.mint(address(this), _taxedRadiateTokens);
+            _mint(address(this), _taxedRadiateTokens);
             // TODO - Add V3 liquidity add function
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
@@ -1292,7 +1290,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             uint256 rebate = (_tokens.mul(rateByAccount(__msgSender(), 5)).div(100).div(_base));
 
             // Mint rebated tokens to user
-            radiateTarget.mint(_receiver, rebate);
+            _mint(_receiver, rebate);
 
             // Update analytics
             rebated += rebate;
@@ -1311,7 +1309,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         balanceLedger_[_receiver] = balanceLedger_[_receiver].add(_taxedRadiateTokens);
 
-        _mint(_receiver, _taxedRadiateTokens);
+        // _mint(_receiver, _taxedRadiateTokens);
 
         updateYieldPerShare();
 

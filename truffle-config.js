@@ -16,13 +16,6 @@ module.exports = {
      */
 
     networks: {
-        develop: {
-            host: "127.0.0.1",
-            port: 9545,
-            network_id: 1121,
-            websocket: true,
-            gasLimit: 15000000000,
-        },
         goerli: {
             provider: () => new HDWalletProvider(
                 MNEMONIC, `https://goerli.infura.io/v3/${PROJECT_ID}`,
@@ -30,13 +23,6 @@ module.exports = {
             network_id: 5,
             gasPrice: 10e9,
             skipDryRun: true,
-        },
-        ganache: {
-            host: "127.0.0.1",
-            port: 8545,
-            network_id: "222222222",
-            websocket: true,
-            gasLimit: 15000000000,
         },
     },
 
@@ -113,16 +99,5 @@ module.exports = {
     api_keys: {
         etherscan: ETHERSCAN_API,
         goerli_etherscan: GOERLI_ETHERSCAN_API,
-    },
-
-    /**
-     * Configure HTTP proxy
-     */
-
-    verify: {
-        proxy: {
-            host: "127.0.0.1",
-            port: "24012",
-        },
     },
 };
