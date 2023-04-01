@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { ETHERSCAN_API, GOERLI_ETHERSCAN_API, MNEMONIC, PROJECT_ID } = process.env;
+const { GAS_REPORTING, ETHERSCAN_API, GOERLI_ETHERSCAN_API, MNEMONIC, PROJECT_ID } = process.env;
 
 const HDWalletProvider = require("@truffle/hdwallet-provider");
 
@@ -16,6 +16,13 @@ module.exports = {
      */
 
     networks: {
+        develop: {
+            host: "127.0.0.1",
+            port: 9545,
+            network_id: 1121,
+            websocket: true,
+            gasLimit: 15000000000,
+        },
         goerli: {
             provider: () => new HDWalletProvider(
                 MNEMONIC, `https://goerli.infura.io/v3/${PROJECT_ID}`,
@@ -23,6 +30,13 @@ module.exports = {
             network_id: 5,
             gasPrice: 10e9,
             skipDryRun: true,
+        },
+        ganache: {
+            host: "127.0.0.1",
+            port: 8545,
+            network_id: "222222222",
+            websocket: true,
+            gasLimit: 15000000000,
         },
     },
 
@@ -32,7 +46,19 @@ module.exports = {
 
     mocha: {
         timeout: 100000,
-        reporter: "eth-gas-reporter",
+        /*reporter: "eth-gas-reporter",
+        reporterOptions: {
+            gasPriceApi: "https://api.etherscan.io/api?module=proxy&action=eth_gasPrice",
+        },*/
+    },
+
+    /**
+     * Configure gas reporting
+     */
+
+    gasReporter: {
+        enabled: GAS_REPORTING,
+        currency: "ETH",
     },
 
     /**

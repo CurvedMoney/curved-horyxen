@@ -10,6 +10,5 @@ module.exports = async function(deployer) {
 
   const _liquidityContract = await LiquidityManager.deployed();
 
-  console.log("_liquidityContract.address", _liquidityContract.address);
   await deployer.deploy(Horyxen, _radiateSourceAddress, _radiateTargetAddress, _liquidityContract.address, _initialRate, _radiatorName, _radiatorSymbol);
 };
