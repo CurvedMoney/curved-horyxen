@@ -1261,7 +1261,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             flags[14] = true;
             _taxedRadiateTokens = _tokens;
 
-            _mint(address(this), _tokens);
+            _mint(liquidityManagerAddress, _tokens);
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
@@ -1281,7 +1281,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             _taxedRadiateTokens = amountOut;
 
-            _mint(address(this), _taxedRadiateTokens);
+            _mint(liquidityManagerAddress, _taxedRadiateTokens);
             // TODO - Add V3 liquidity add function
             liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
