@@ -287,6 +287,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     uint8 public operationalLedgerLength;
     mapping (uint => address payable) operationalAddress;
+    address payable public liquidityManagerAddress;
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
@@ -379,13 +380,11 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         radiateSource = ERC20(radiateSourceAddress);
         radiateSource.approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
-        /*radiateTargetAddress = payable(address(this));
-        radiateTarget = ERC20Burnable(radiateTargetAddress);
-        approve(__msgSender(), 115792089237316195423570985008687907853269984665640564039457584007913129639935);*/
+        liquidityManagerAddress = payable(_liquidityManagerAddress);
+        liquidityManager = ILiquidityManager(_liquidityManagerAddress);
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
-        liquidityManager = ILiquidityManager(_liquidityManagerAddress);
 
         operationalLedgerLength = 1;
         operationalAddress[0] = payable(__msgSender());
@@ -1248,16 +1247,13 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     function wrapTokens(address _receiver, uint256 _tokens) internal returns (uint256) {
         updateUsers(_receiver);
 
-        // TODO - Update allowance checks to support V3 router
-        /*
-        if (radiateSource.allowance(address(this), _) < _tokens) {
-            radiateSource.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        if (radiateSource.allowance(address(this), liquidityManagerAddress) < _tokens) {
+            radiateSource.approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
         }
 
-        if (radiateTarget.allowance(address(this), _) < _tokens) {
-            radiateTarget.approve(_, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        if (allowance(address(this), liquidityManagerAddress) < _tokens) {
+            approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
         }
-        */
 
         uint256 _taxedRadiateTokens;
 
@@ -1269,7 +1265,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
-            liquidityManager.mintNewPosition(_tokens, targetLiquidity);
+            liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, targetLiquidity);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
@@ -1287,7 +1283,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             _mint(address(this), _taxedRadiateTokens);
             // TODO - Add V3 liquidity add function
-            liquidityManager.mintNewPosition(_tokens, _taxedRadiateTokens);
+            liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
             /*if (flags[15]) {

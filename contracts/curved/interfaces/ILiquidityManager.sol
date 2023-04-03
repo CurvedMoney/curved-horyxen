@@ -22,7 +22,7 @@ interface ILiquidityManager {
     /// @return liquidity The amount of liquidity for the position
     /// @return amount0 The amount of token0
     /// @return amount1 The amount of token1
-    function mintNewPosition(uint256 amount0ToMint, uint256 amount1ToMint)
+    function mintNewPosition(address token0, address token1, uint256 amount0ToMint, uint256 amount1ToMint)
     external
     returns (
         uint256 tokenId,

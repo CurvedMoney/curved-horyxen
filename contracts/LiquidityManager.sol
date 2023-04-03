@@ -9,8 +9,6 @@ import './liquidity/libraries/TransferHelper.sol';
 
 contract LiquidityManager is IERC721Receiver {
     address public constant nonfungiblePositionManager = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
-    address public constant token0 = 0xca41f293A32d25c2216bC4B30f5b0Ab61b6ed2CB;
-    address public constant token1 = 0xD87Ba7A50B2E7E660f678A895E4B72E7CB4CCd9C;
 
     uint24 public constant poolFee = 10000;
 
@@ -51,7 +49,7 @@ contract LiquidityManager is IERC721Receiver {
     /// @return liquidity The amount of liquidity for the position
     /// @return amount0 The amount of token0
     /// @return amount1 The amount of token1
-    function mintNewPosition(uint256 amount0ToMint, uint256 amount1ToMint)
+    function mintNewPosition(address token0, address token1, uint256 amount0ToMint, uint256 amount1ToMint)
     external
     returns (
         uint256 tokenId,
