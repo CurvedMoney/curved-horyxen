@@ -297,6 +297,16 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     uint256 public claimSession;
 
+    /**
+     * @dev Type to param `type`
+     * `type` (0) - Operational claims
+     * `type` (1) - Affiliate/referral claims
+     */
+    uint256 public claimType;
+
+    /**
+     * @dev Helper interfaces
+     */
     IQuoterV2 public v3Quoter;
     IUniswapV3Factory public v3Factory;
     IUniswapV3Pool public v3Pool;
@@ -304,8 +314,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     ILiquidityManager public liquidityManager;
 
     ERC20 internal radiateSource;
-
-    uint256 public claimType;
 
     /**
      * @dev ERC-20 attributes
@@ -1251,8 +1259,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         }
         */
 
-        (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
-
         uint256 _taxedRadiateTokens;
 
         if (flags[14] == false) {
@@ -1263,8 +1269,11 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
+            liquidityManager.mintNewPosition(_tokens, targetLiquidity);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
+            (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
+
             // TODO - Add V3 liquidity quotes
             (uint256 amountOut,,,) = v3Quoter.quoteExactInputSingle(IQuoterV2.QuoteExactInputSingleParams({
                 tokenIn: radiateSourceAddress,
@@ -1278,11 +1287,12 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             _mint(address(this), _taxedRadiateTokens);
             // TODO - Add V3 liquidity add function
+            liquidityManager.mintNewPosition(_tokens, _taxedRadiateTokens);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
-            if (flags[15]) {
+            /*if (flags[15]) {
                 _taxedRadiateTokens = _taxedRadiateTokens.mul(uint256(reserve0)).div(uint256(reserve1));
-            }
+            }*/
         }
 
         // Instant rebate

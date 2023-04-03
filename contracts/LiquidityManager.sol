@@ -9,10 +9,10 @@ import './liquidity/libraries/TransferHelper.sol';
 
 contract LiquidityManager is IERC721Receiver {
     address public constant nonfungiblePositionManager = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
-    address public constant XEN = 0xca41f293A32d25c2216bC4B30f5b0Ab61b6ed2CB;
-    address public constant USDC = 0xD87Ba7A50B2E7E660f678A895E4B72E7CB4CCd9C;
+    address public constant token0 = 0xca41f293A32d25c2216bC4B30f5b0Ab61b6ed2CB;
+    address public constant token1 = 0xD87Ba7A50B2E7E660f678A895E4B72E7CB4CCd9C;
 
-    uint24 public constant poolFee = 3000;
+    uint24 public constant poolFee = 10000;
 
     /// @notice Represents the deposit of an NFT
     struct Deposit {
@@ -46,12 +46,12 @@ contract LiquidityManager is IERC721Receiver {
     }
 
     /// @notice Calls the mint function defined in periphery, mints the same amount of each token.
-    /// For this example we are providing 1000 XEN and 1000 USDC in liquidity
+    /// For this example we are providing 1000 token0 and 1000 token1 in liquidity
     /// @return tokenId The id of the newly minted ERC721
     /// @return liquidity The amount of liquidity for the position
     /// @return amount0 The amount of token0
     /// @return amount1 The amount of token1
-    function mintNewPosition()
+    function mintNewPosition(uint256 amount0ToMint, uint256 amount1ToMint)
     external
     returns (
         uint256 tokenId,
@@ -62,23 +62,21 @@ contract LiquidityManager is IERC721Receiver {
     {
         // For this example, we will provide equal amounts of liquidity in both assets.
         // Providing liquidity in both assets means liquidity will be earning fees and is considered in-range.
-        uint256 amount0ToMint = 1000;
-        uint256 amount1ToMint = 1000;
 
         // transfer tokens to contract
-        TransferHelper.safeTransferFrom(XEN, msg.sender, address(this), amount0ToMint);
-        TransferHelper.safeTransferFrom(USDC, msg.sender, address(this), amount1ToMint);
+        TransferHelper.safeTransferFrom(token0, msg.sender, address(this), amount0ToMint);
+        TransferHelper.safeTransferFrom(token1, msg.sender, address(this), amount1ToMint);
 
         // Approve the position manager
-        TransferHelper.safeApprove(XEN, address(nonfungiblePositionManager), amount0ToMint);
-        TransferHelper.safeApprove(USDC, address(nonfungiblePositionManager), amount1ToMint);
+        TransferHelper.safeApprove(token0, address(nonfungiblePositionManager), amount0ToMint);
+        TransferHelper.safeApprove(token1, address(nonfungiblePositionManager), amount1ToMint);
 
         // The values for tickLower and tickUpper may not work for all tick spacings.
         // Setting amount0Min and amount1Min to 0 is unsafe.
         INonfungiblePositionManager.MintParams memory params =
         INonfungiblePositionManager.MintParams({
-        token0: XEN,
-        token1: USDC,
+        token0: token0,
+        token1: token1,
         fee: poolFee,
         tickLower: TickMath.MIN_TICK,
         tickUpper: TickMath.MAX_TICK,
@@ -90,7 +88,7 @@ contract LiquidityManager is IERC721Receiver {
         deadline: block.timestamp
         });
 
-        // Note that the pool defined by XEN/USDC and fee tier 0.3% must already be created and initialized in order to mint
+        // Note that the pool defined by token0/token1 and fee tier 0.3% must already be created and initialized in order to mint
         (tokenId, liquidity, amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).mint(params);
 
         // Create a deposit
@@ -98,15 +96,15 @@ contract LiquidityManager is IERC721Receiver {
 
         // Remove allowance and refund in both assets.
         if (amount0 < amount0ToMint) {
-            TransferHelper.safeApprove(XEN, address(nonfungiblePositionManager), 0);
+            TransferHelper.safeApprove(token0, address(nonfungiblePositionManager), 0);
             uint256 refund0 = amount0ToMint - amount0;
-            TransferHelper.safeTransfer(XEN, msg.sender, refund0);
+            TransferHelper.safeTransfer(token0, msg.sender, refund0);
         }
 
         if (amount1 < amount1ToMint) {
-            TransferHelper.safeApprove(USDC, address(nonfungiblePositionManager), 0);
+            TransferHelper.safeApprove(token1, address(nonfungiblePositionManager), 0);
             uint256 refund1 = amount1ToMint - amount1;
-            TransferHelper.safeTransfer(USDC, msg.sender, refund1);
+            TransferHelper.safeTransfer(token1, msg.sender, refund1);
         }
     }
 

@@ -2,7 +2,7 @@ const Horyxen = artifacts.require("Horyxen");
 const LiquidityManager = artifacts.require("LiquidityManager");
 
 module.exports = async function(deployer) {
-  const _radiateSourceAddress = "0x5A055D9249f3ac1a7CDC00b626c8369877DEaB70";
+  const _radiateSourceAddress = "0xca41f293A32d25c2216bC4B30f5b0Ab61b6ed2CB";
   const _initialRate = BigInt(1e18).toString();
   const _radiatorName = "Horyxen";
   const _radiatorSymbol = "HORYXEN";
