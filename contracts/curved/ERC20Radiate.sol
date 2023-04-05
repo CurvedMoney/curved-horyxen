@@ -382,6 +382,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         liquidityManagerAddress = payable(_liquidityManagerAddress);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
+        approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
