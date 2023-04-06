@@ -382,7 +382,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         liquidityManagerAddress = payable(_liquidityManagerAddress);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
-        approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+        _approve(address(this), liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -1180,7 +1180,12 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         if (flags[15]) {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
-            incomingRate = incomingRate.mul(uint256(reserve0)).div(uint256(reserve1));
+
+            if (reserve0 == 0 || reserve1 == 0) {
+                return incomingRate;
+            } else {
+                incomingRate = incomingRate.mul(uint256(reserve0)).div(uint256(reserve1));
+            }
         }
 
         operationalReserve[claimSession] = operationalReserve[claimSession].add(operationalIncome);
@@ -1253,7 +1258,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         }
 
         if (allowance(address(this), liquidityManagerAddress) < _tokens) {
-            approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+            _approve(address(this), liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
         }
 
         uint256 _taxedRadiateTokens;
@@ -1262,11 +1267,23 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             flags[14] = true;
             _taxedRadiateTokens = _tokens;
 
-            _mint(liquidityManagerAddress, _tokens);
+            _mint(address(this), _tokens);
 
             uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
-            liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, targetLiquidity);
+
+            address token0;
+            address token1;
+
+            if (radiateSourceAddress < address(this)) {
+                token0 = radiateSourceAddress;
+                token1 = address(this);
+            } else {
+                token0 = address(this);
+                token1 = radiateSourceAddress;
+            }
+
+            liquidityManager.mintNewPosition(token0, token1, _tokens, targetLiquidity);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
