@@ -392,11 +392,18 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         poolAddress = v3Factory.getPool(radiateSourceAddress, address(this), 1e4);
 
+        uint160 sqrtPriceX96 = 1e18 * 2**96;
+
         if (poolAddress == address(0)) {
             flags[14] = false;
             poolAddress = v3Factory.createPool(radiateSourceAddress, address(this), 1e4);
+            IUniswapV3Pool(poolAddress).initialize(sqrtPriceX96);
         } else {
             flags[14] = true;
+            (uint160 sqrtPriceX96Existing, , , , , , ) = IUniswapV3Pool(poolAddress).slot0();
+            if (sqrtPriceX96Existing == 0) {
+                IUniswapV3Pool(poolAddress).initialize(sqrtPriceX96);
+            }
         }
 
         v3Pool = IUniswapV3Pool(poolAddress);
