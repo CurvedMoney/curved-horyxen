@@ -348,7 +348,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     constructor(address _radiateSourceAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
-        // flags[8] = true;                    // Instant rebate enabled
+        flags[8] = false;                    // Instant rebate enabled
         flags[15] = true;                   // Share minting derived from LP reserves
 
         systemRates[0] = 333e16;            // 3.33% - Referral rate
@@ -382,7 +382,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         liquidityManagerAddress = payable(_liquidityManagerAddress);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
-        _approve(address(this), liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -401,6 +400,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         } else {
             flags[14] = true;
             (uint160 sqrtPriceX96Existing, , , , , , ) = IUniswapV3Pool(poolAddress).slot0();
+
             if (sqrtPriceX96Existing == 0) {
                 IUniswapV3Pool(poolAddress).initialize(sqrtPriceX96);
             }
@@ -1261,11 +1261,11 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         updateUsers(_receiver);
 
         if (radiateSource.allowance(address(this), liquidityManagerAddress) < _tokens) {
-            radiateSource.approve(liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+            radiateSource.approve(liquidityManagerAddress, _tokens);
         }
 
         if (allowance(address(this), liquidityManagerAddress) < _tokens) {
-            _approve(address(this), liquidityManagerAddress, 115792089237316195423570985008687907853269984665640564039457584007913129639935);
+            _approve(address(this), liquidityManagerAddress, _tokens);
         }
 
         uint256 _taxedRadiateTokens;
@@ -1290,7 +1290,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
                 token1 = radiateSourceAddress;
             }
 
-            liquidityManager.mintNewPosition(token0, token1, _tokens, targetLiquidity);
+            /*liquidityManager.mintNewPosition(token0, token1, _tokens, targetLiquidity);*/
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
