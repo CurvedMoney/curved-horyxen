@@ -10,7 +10,7 @@ import './liquidity/libraries/TransferHelper.sol';
 contract LiquidityManager is IERC721Receiver {
     address public constant nonfungiblePositionManager = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
 
-    uint24 public constant poolFee = 10000;
+    uint24 public constant poolFee = 100;
 
     /// @notice Represents the deposit of an NFT
     struct Deposit {
@@ -73,17 +73,17 @@ contract LiquidityManager is IERC721Receiver {
         // Setting amount0Min and amount1Min to 0 is unsafe.
         INonfungiblePositionManager.MintParams memory params =
         INonfungiblePositionManager.MintParams({
-        token0: token0,
-        token1: token1,
-        fee: poolFee,
-        tickLower: TickMath.MIN_TICK,
-        tickUpper: TickMath.MAX_TICK,
-        amount0Desired: amount0ToMint,
-        amount1Desired: amount1ToMint,
-        amount0Min: 0,
-        amount1Min: 0,
-        recipient: address(this),
-        deadline: block.timestamp
+            token0: token0,
+            token1: token1,
+            fee: poolFee,
+            tickLower: TickMath.MIN_TICK,
+            tickUpper: TickMath.MAX_TICK,
+            amount0Desired: amount0ToMint,
+            amount1Desired: amount1ToMint,
+            amount0Min: 0,
+            amount1Min: 0,
+            recipient: address(this),
+            deadline: block.timestamp
         });
 
         // Note that the pool defined by token0/token1 and fee tier 0.3% must already be created and initialized in order to mint
@@ -117,10 +117,10 @@ contract LiquidityManager is IERC721Receiver {
         // alternatively can set recipient to msg.sender and avoid another transaction in `sendToOwner`
         INonfungiblePositionManager.CollectParams memory params =
         INonfungiblePositionManager.CollectParams({
-        tokenId: tokenId,
-        recipient: address(this),
-        amount0Max: type(uint128).max,
-        amount1Max: type(uint128).max
+            tokenId: tokenId,
+            recipient: address(this),
+            amount0Max: type(uint128).max,
+            amount1Max: type(uint128).max
         });
 
         (amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).collect(params);
@@ -144,11 +144,11 @@ contract LiquidityManager is IERC721Receiver {
         // if the amount received after burning is not greater than these minimums, transaction will fail
         INonfungiblePositionManager.DecreaseLiquidityParams memory params =
         INonfungiblePositionManager.DecreaseLiquidityParams({
-        tokenId: tokenId,
-        liquidity: halfLiquidity,
-        amount0Min: 0,
-        amount1Min: 0,
-        deadline: block.timestamp
+            tokenId: tokenId,
+            liquidity: halfLiquidity,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp
         });
 
         (amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).decreaseLiquidity(params);
@@ -184,12 +184,12 @@ contract LiquidityManager is IERC721Receiver {
 
         INonfungiblePositionManager.IncreaseLiquidityParams memory params =
         INonfungiblePositionManager.IncreaseLiquidityParams({
-        tokenId: tokenId,
-        amount0Desired: amountAdd0,
-        amount1Desired: amountAdd1,
-        amount0Min: 0,
-        amount1Min: 0,
-        deadline: block.timestamp
+            tokenId: tokenId,
+            amount0Desired: amountAdd0,
+            amount1Desired: amountAdd1,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp
         });
 
         (liquidity, amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).increaseLiquidity(params);

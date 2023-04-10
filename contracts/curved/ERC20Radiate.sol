@@ -236,7 +236,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
     /**
      * @dev Balance of supply allocated to ERC20Radiate treasurer operations
-     * `debtReserve` - Allocated supply for collaeralized tokens
+     * `debtReserve` - Allocated supply for collateralized tokens
      * `initialRate` - Rate that {raditateTarget} applies initial liquidity
      */
     uint256 public debtReserve;
@@ -348,7 +348,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     constructor(address _radiateSourceAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
-        flags[8] = true;                    // Instant rebate enabled
+        // flags[8] = true;                    // Instant rebate enabled
         flags[15] = true;                   // Share minting derived from LP reserves
 
         systemRates[0] = 333e16;            // 3.33% - Referral rate
@@ -390,13 +390,13 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         operationalLedgerLength = 1;
         operationalAddress[0] = payable(__msgSender());
 
-        poolAddress = v3Factory.getPool(radiateSourceAddress, address(this), 1e4);
+        poolAddress = v3Factory.getPool(radiateSourceAddress, address(this), 100);
 
-        uint160 sqrtPriceX96 = 1e18 * 2**96;
+        uint160 sqrtPriceX96 = 1 * 2**96;
 
         if (poolAddress == address(0)) {
             flags[14] = false;
-            poolAddress = v3Factory.createPool(radiateSourceAddress, address(this), 1e4);
+            poolAddress = v3Factory.createPool(radiateSourceAddress, address(this), 100);
             IUniswapV3Pool(poolAddress).initialize(sqrtPriceX96);
         } else {
             flags[14] = true;
@@ -1299,14 +1299,14 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             (uint256 amountOut,,,) = v3Quoter.quoteExactInputSingle(IQuoterV2.QuoteExactInputSingleParams({
                 tokenIn: radiateSourceAddress,
                 tokenOut: address(this),
-                fee: 3000,
+                fee: 100,
                 amountIn: _tokens,
                 sqrtPriceLimitX96: 0
             }));
 
             _taxedRadiateTokens = amountOut;
 
-            _mint(liquidityManagerAddress, _taxedRadiateTokens);
+            _mint(address(this), _taxedRadiateTokens);
             // TODO - Add V3 liquidity add function
             liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
