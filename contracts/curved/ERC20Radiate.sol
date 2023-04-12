@@ -226,7 +226,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     /**
      * @dev Ledger of user ERC20Radiate
      */
-    mapping(address => uint256) internal balanceLedger_;
+    mapping(address => uint256) internal balances_;
 
     /**
      * @dev Ancillary accounts (int256)
@@ -348,7 +348,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     constructor(address _radiateSourceAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
-        flags[8] = false;                    // Instant rebate enabled
+        flags[8] = false;                   // Instant rebate enabled
         flags[15] = true;                   // Share minting derived from LP reserves
 
         systemRates[0] = 333e16;            // 3.33% - Referral rate
@@ -628,7 +628,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         }
 
         treasurerCollection_[_treasurer].status = _action;
+
         treasurerCollection_[_treasurer].reserveLimit = _limit;
+
         treasurerCollection_[_treasurer].contractAddress = _treasurer;
     }
 
@@ -637,6 +639,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     function updateYieldBalance(uint256 _supply, uint256 _return) public onlyRole(GOVERNOR_ROLE) {
         yieldSupply_ = _supply;
+
         yieldReturn_ = _return;
 
         distribute();
@@ -687,15 +690,15 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         require(flags[2], "ERC20Radiate: Unwrapping is not enabled.");
 
         if (flags[7]) {
-            require(_amount <= balanceLedger_[__msgSender()].add(allocationsTo_[__msgSender()]));
+            require(_amount <= balances_[__msgSender()].add(allocationsTo_[__msgSender()]));
         } else {
-            require(_amount <= balanceLedger_[__msgSender()].sub(allocationsTo_[__msgSender()]));
+            require(_amount <= balances_[__msgSender()].sub(allocationsTo_[__msgSender()]));
         }
 
         uint256 _rebate;
 
         if (statementLedger_[__msgSender()].rebated > 0) {
-            _rebate = SafeMath.div(statementLedger_[__msgSender()].rebated * magnitude, balanceLedger_[__msgSender()]) * _amount;
+            _rebate = SafeMath.div(statementLedger_[__msgSender()].rebated * magnitude, balances_[__msgSender()]) * _amount;
 
             statementLedger_[__msgSender()].rebated = statementLedger_[__msgSender()].rebated.sub(_rebate.div(magnitude));
         }
@@ -706,13 +709,14 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         uint256 _taxedRadiateShares = _amount.sub(_rate);
 
+        // Reconcile unwrapped tokens with ledgers
+        reconcile(_taxedRadiateShares, liquidationPath);
+
         // Deflate ERC20Radiate token supply
         tokenSupply_ = tokenSupply_.sub(_taxedRadiateShares);
 
         // Deflate ERC20Radiate share supply
         shareSupply_ = shareSupply_.sub(_taxedRadiateShares);
-
-        reconcile(_taxedRadiateShares, liquidationPath);
 
         // Burn taxed amount
         _burn(__msgSender(), _taxedRadiateShares);
@@ -727,11 +731,12 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         withdrawn += _taxedRadiateShares;
 
+        // TODO - Ensure supply matches burned amount
         // Deflate account supply
-        if (_amount > balanceLedger_[__msgSender()]) {
-            balanceLedger_[__msgSender()] = 0;
+        if (_amount > balances_[__msgSender()]) {
+            balances_[__msgSender()] = 0;
         } else {
-            balanceLedger_[__msgSender()] = balanceLedger_[__msgSender()].sub(_amount);
+            balances_[__msgSender()] = balances_[__msgSender()].sub(_amount);
         }
 
         emit onTokenUnwrap(__msgSender(), _amount, _taxedRadiateShares, block.timestamp);
@@ -759,7 +764,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     function transfer(address _to, uint256 _amount) public onlyRadiators override returns (bool) {
         require(flags[5], "ERC20Radiate: Transfers are not enabled.");
 
-        require(_amount <= balanceLedger_[__msgSender()]);
+        require(_amount <= balances_[__msgSender()]);
 
         _transfer(__msgSender(), _to, _amount);
 
@@ -883,11 +888,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      * @dev ERC-NNN mutator
      */
     function burn(uint256 _amount) public override {
-        tokenSupply_ = tokenSupply_.sub(_amount);
-
         shareSupply_ -= _amount;
-
-        balanceLedger_[__msgSender()] = balanceLedger_[__msgSender()].sub(_amount);
 
         _burn(__msgSender(), _amount);
     }
@@ -958,7 +959,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      * @dev Retrieve the token balance of any single address.
      */
     function balanceOf(address _caller) public view override returns (uint256) {
-        return balanceLedger_[_caller];
+        return balances_[_caller];
     }
 
     /**
@@ -1053,7 +1054,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     function shareRate(address _caller) public view returns (uint256) {
         if (tokenSupply_ > 0) {
-            return (balanceLedger_[_caller] * magnitude) / tokenSupply_;
+            return (balances_[_caller] * magnitude) / tokenSupply_;
         } else {
             return 0;
         }
@@ -1145,6 +1146,40 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     }
 
     /**
+     * @dev Destroys `amount` tokens from `account`, reducing the
+     * total supply.
+     *
+     * Emits a {Transfer} event with `to` set to the zero address.
+     *
+     * Requirements:
+     *
+     * - `account` cannot be the zero address.
+     * - `account` must have at least `amount` tokens.
+     */
+    function _burn(address account, uint256 amount) internal override {
+        require(account != address(0), "ERC20: burn from the zero address");
+
+        balances_[account] = balances_[account].sub(amount, "ERC20: burn amount exceeds balance");
+
+        tokenSupply_ = tokenSupply_.sub(amount);
+
+        emit Transfer(account, address(0), amount);
+    }
+
+    /**
+     * @dev ERC-NNN mutator (nested)
+     */
+    function _mint(address account, uint256 amount) internal override {
+        require(account != address(0), "ERC20: mint to the zero address");
+
+        tokenSupply_ = tokenSupply_.add(amount);
+
+        balances_[account] = balances_[account].add(amount);
+
+        emit Transfer(address(0), account, amount);
+    }
+
+    /**
      * @dev ERC-NNN mutator (nested)
      */
     function _transfer(address _from, address _to, uint256 _amount) internal override {
@@ -1159,9 +1194,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         uint256 _taxedRadiateShares = _amount.sub(_rate);
 
         // Perform swap
-        balanceLedger_[_from] = balanceLedger_[_from].sub(_taxedRadiateShares);
+        balances_[_from] = balances_[_from].sub(_taxedRadiateShares);
 
-        balanceLedger_[_to] = balanceLedger_[_to].add(_taxedRadiateShares);
+        balances_[_to] = balances_[_to].add(_taxedRadiateShares);
 
         updateUsers(_to);
 
@@ -1268,15 +1303,15 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
             _approve(address(this), liquidityManagerAddress, _tokens);
         }
 
-        uint256 _taxedRadiateTokens;
+        uint256 _taxedRadiateTokens = _tokens;
+        uint256 rebate;
 
         if (flags[14] == false) {
             flags[14] = true;
-            _taxedRadiateTokens = _tokens;
 
-            _mint(address(this), _tokens);
+            _mint(address(this), _taxedRadiateTokens);
 
-            uint256 targetLiquidity = _tokens.mul(initialRate).div(_base);
+            uint256 targetLiquidity = _taxedRadiateTokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
 
             address token0;
@@ -1290,12 +1325,13 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
                 token1 = radiateSourceAddress;
             }
 
-            /*liquidityManager.mintNewPosition(token0, token1, _tokens, targetLiquidity);*/
-            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
+            liquidityManager.mintNewPosition(token0, token1, _taxedRadiateTokens, targetLiquidity);
+            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _taxedRadiateTokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
 
             // TODO - Add V3 liquidity quotes
+            /*
             (uint256 amountOut,,,) = v3Quoter.quoteExactInputSingle(IQuoterV2.QuoteExactInputSingleParams({
                 tokenIn: radiateSourceAddress,
                 tokenOut: address(this),
@@ -1303,28 +1339,33 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
                 amountIn: _tokens,
                 sqrtPriceLimitX96: 0
             }));
+            */
 
-            _taxedRadiateTokens = amountOut;
+            /*_taxedRadiateTokens = amountOut;*/
 
-            _mint(address(this), _taxedRadiateTokens);
+            /*_mint(address(this), _taxedRadiateTokens);*/
+
             // TODO - Add V3 liquidity add function
-            liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);
+            /*liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);*/
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
 
-            /*if (flags[15]) {
+            /*
+            if (flags[15]) {
                 _taxedRadiateTokens = _taxedRadiateTokens.mul(uint256(reserve0)).div(uint256(reserve1));
-            }*/
+            }
+            */
         }
 
         // Instant rebate
         if (flags[8]) {
-            uint256 rebate = (_tokens.mul(rateByAccount(__msgSender(), 5)).div(100).div(_base));
+            /*uint256 rebate = (_tokens.mul(rateByAccount(__msgSender(), 5)).div(100).div(_base));*/
 
             // Mint rebated tokens to user
             _mint(_receiver, rebate);
 
             // Update analytics
             rebated += rebate;
+            
             statementLedger_[_receiver].rebated += rebate;
         }
 
@@ -1334,13 +1375,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         require(_taxedRadiateTokens > 0 && _taxedRadiateTokens.add(tokenSupply_) > tokenSupply_);
 
-        tokenSupply_ = tokenSupply_.add(_taxedRadiateTokens);
+        _mint(_receiver, _taxedRadiateTokens);
 
         shareSupply_ += _taxedRadiateTokens;
-
-        balanceLedger_[_receiver] = balanceLedger_[_receiver].add(_taxedRadiateTokens);
-
-        // _mint(_receiver, _taxedRadiateTokens);
 
         updateYieldPerShare();
 
@@ -1367,13 +1404,15 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         /*require(radiateTarget.approve(address(), _amount), "ERC20Radiate: Router approval is required.");*/
 
         // TODO - Switch code to support V3 swaps
-        /*swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        /*
+        swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount,
             0,
             _reconciliationPath,
             __msgSender(),
             block.timestamp.add(20 minutes)
-        );*/
+        );
+        */
 
         emit onReconciliation(_amount, block.timestamp);
 
@@ -1441,8 +1480,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         treasurerCollection_[__msgSender()].balanceAllocated -= _amount;
 
-        balanceLedger_[_borrower] = balanceLedger_[_borrower].sub(_amount);
-
         // Update allocation balances
         allocationsTo_[_borrower] = allocationsTo_[_borrower].sub(_amount);
 
@@ -1487,19 +1524,15 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         require(debtSupply_.add(_taxedRadiateTokens) <= debtReserve);
 
-        tokenSupply_ = tokenSupply_.add(_taxedRadiateTokens);
-
+        _mint(_borrower, _taxedRadiateTokens);
+        
         debtSupply_ = debtSupply_.add(_taxedRadiateTokens);
 
         shareSupply_ += _taxedRadiateTokens;
 
         treasurerCollection_[__msgSender()].balanceAllocated = treasurerCollection_[__msgSender()].balanceAllocated.add(_taxedRadiateTokens);
 
-        balanceLedger_[_borrower] = balanceLedger_[_borrower].add(_taxedRadiateTokens);
-
         allocationsTo_[_borrower] = allocationsTo_[_borrower].add(_taxedRadiateTokens);
-
-        _mint(_borrower, _taxedRadiateTokens);
 
         updateYieldPerShare();
 
@@ -1533,8 +1566,6 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         shareSupply_ = shareSupply_.sub(_amount);
 
         treasurerCollection_[__msgSender()].balanceAllocated -= _amount;
-
-        balanceLedger_[__msgSender()] = balanceLedger_[__msgSender()].sub(_amount);
 
         // Update allocation balances
         allocationsTo_[_borrower] = allocationsTo_[_borrower].sub(_amount);
