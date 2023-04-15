@@ -4,13 +4,11 @@ pragma abicoder v2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 
 import "./contracts/access/AccessControl.sol";
 import "./contracts/utils/math/SafeMath.sol";
-import "./interfaces/IERC20Prismatic.sol";
 import "./interfaces/ILiquidityManager.sol";
 import "./interfaces/IQuoterV2.sol";
 import "./interfaces/IRateOracle.sol";
@@ -23,7 +21,7 @@ import "./libraries/PoolHelper.sol";
  * Attributes (rates, reserve balance, debt, claims, et cetra) are configurable by the contract owner.
  */
 
-contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
+contract ERC20Radiate is ERC20, CurvedAccessControl {
     using CurvedSafeMath for uint256;
 
     // =---------- EVENTS
@@ -374,6 +372,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, __msgSender());
         _grantRole(GOVERNOR_ROLE, __msgSender());
         _grantRole(MINTER_ROLE, __msgSender());
+        _grantRole(MINTER_ROLE, _liquidityManagerAddress);
         _grantRole(TREASURER_ROLE, __msgSender());
 
         radiateSourceAddress = payable(_radiateSourceAddress);
@@ -382,6 +381,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
         liquidityManagerAddress = payable(_liquidityManagerAddress);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
+        liquidityManager.grantRole(DEFAULT_ADMIN_ROLE, address(this));
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -887,7 +887,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
     /**
      * @dev ERC-NNN mutator
      */
-    function burn(uint256 _amount) public override {
+    function burn(uint256 _amount) external {
         shareSupply_ -= _amount;
 
         _burn(__msgSender(), _amount);
@@ -898,6 +898,14 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
      */
     function decimals() public view override returns (uint8) {
         return _decimals;
+    }
+
+    /**
+     * @dev ERC-NNN mutator (nested)
+     */
+    // TODO - Ensure access control
+    function mint(address account, uint256 amount) external onlyRole(MINTER_ROLE) {
+        _mint(account, amount);
     }
 
     /**
@@ -1309,23 +1317,9 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
         if (flags[14] == false) {
             flags[14] = true;
 
-            _mint(address(this), _taxedRadiateTokens);
-
-            uint256 targetLiquidity = _taxedRadiateTokens.mul(initialRate).div(_base);
             // TODO - Add V3 liquidity add function
 
-            address token0;
-            address token1;
-
-            if (radiateSourceAddress < address(this)) {
-                token0 = radiateSourceAddress;
-                token1 = address(this);
-            } else {
-                token0 = address(this);
-                token1 = radiateSourceAddress;
-            }
-
-            liquidityManager.mintNewPosition(token0, token1, _taxedRadiateTokens, targetLiquidity);
+            liquidityManager.mintNewPosition(address(this), radiateSourceAddress, _taxedRadiateTokens);
             /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _taxedRadiateTokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
         } else {
             (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
@@ -1343,7 +1337,7 @@ contract ERC20Radiate is ERC20, ERC20Burnable, CurvedAccessControl {
 
             /*_taxedRadiateTokens = amountOut;*/
 
-            /*_mint(address(this), _taxedRadiateTokens);*/
+            /*_mint(liquidityManagerAddress, _taxedRadiateTokens);*/
 
             // TODO - Add V3 liquidity add function
             /*liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);*/

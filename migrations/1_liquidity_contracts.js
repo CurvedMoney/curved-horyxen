@@ -4,7 +4,7 @@ module.exports = async function (deployer) {
     const _liquidityContract = await LiquidityManager.deployed();
 
     if (_liquidityContract) {
-        console.log("Liquidity Manager deployed @", _liquidityContract.address, "\n\n");
+        console.log("\tLiquidity Manager deployed @", _liquidityContract.address, "\n\n");
     } else {
         await deployer.deploy(LiquidityManager);
     }
