@@ -21,6 +21,10 @@ import "./libraries/PoolHelper.sol";
  * Attributes (rates, reserve balance, debt, claims, et cetra) are configurable by the contract owner.
  */
 
+// TODO - Add setters for Liquidity Manager and Liquidity Engine Oracle
+// TODO - Add code that individualizes share rate for wrappers only, share rate cannot be transferred, user must forfeit
+// TODO - Add setters and approval code for future ERCs that may be airdropped
+
 contract ERC20Radiate is ERC20, CurvedAccessControl {
     using CurvedSafeMath for uint256;
 
