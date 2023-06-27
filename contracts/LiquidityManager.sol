@@ -116,6 +116,7 @@ contract LiquidityManager is IERC721Receiver, AccessControl {
         _createDeposit(msg.sender, tokenId);
 
         // Remove allowance and refund in both assets.
+        /*
         if (amount0 < amountToMint) {
             TransferHelper.safeApprove(token0, address(nonfungiblePositionManager), 0);
             uint256 refund0 = amountToMint - amount0;
@@ -127,29 +128,36 @@ contract LiquidityManager is IERC721Receiver, AccessControl {
             uint256 refund1 = amountToMint - amount1;
             TransferHelper.safeTransfer(token1, msg.sender, refund1);
         }
+        */
     }
 
-    // @notice Collects the fees associated with provided liquidity
+    // @notice Compounds the fees associated with provided liquidity
     // @dev The contract must hold the erc721 token before it can collect fees
     // @param tokenId The id of the erc721 token
     // @return amount0 The amount of fees collected in token0
     // @return amount1 The amount of fees collected in token1
-    function collectAllFees(uint256 tokenId) external returns (uint256 amount0, uint256 amount1) {
+    function compoundFees(uint256 tokenId, address mintable) external returns (uint256 amount0, uint256 amount1) {
         // Caller must own the ERC721 position, meaning it must be a deposit
         // set amount0Max and amount1Max to type(uint128).max to collect all fees
         // alternatively can set recipient to msg.sender and avoid another transaction in `sendToOwner`
         INonfungiblePositionManager.CollectParams memory params =
         INonfungiblePositionManager.CollectParams({
-            tokenId: tokenId,
-            recipient: address(this),
-            amount0Max: type(uint128).max,
-            amount1Max: type(uint128).max
+        tokenId: tokenId,
+        recipient: address(this),
+        amount0Max: type(uint128).max,
+        amount1Max: type(uint128).max
         });
 
         (amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).collect(params);
 
-        // send collected fees back to owner
-        _sendToOwner(tokenId, amount0, amount1);
+        // compound collected fees of source token into LP pool and burn mintable tokens
+        if (deposits[tokenId].token0 == mintable) {
+            _increaseLiquidityCurrentRange(tokenId, mintable, amount1);
+            IERC20Radiate(mintable).burn(amount0);
+        } else {
+            _increaseLiquidityCurrentRange(tokenId, mintable, amount0);
+            IERC20Radiate(mintable).burn(amount1);
+        }
     }
 
     // @notice A function that decreases the current liquidity by half. An example to show how to call the `decreaseLiquidity` function defined in periphery.
@@ -187,8 +195,8 @@ contract LiquidityManager is IERC721Receiver, AccessControl {
     // @param amount1 The amount to add of token1
     function increaseLiquidityCurrentRange(
         uint256 tokenId,
-        uint256 amountAdd0,
-        uint256 amountAdd1
+        address mintable,
+        uint256 amountToMint
     )
     external
     returns (
@@ -197,22 +205,57 @@ contract LiquidityManager is IERC721Receiver, AccessControl {
         uint256 amount1
     )
     {
-        address token0 = deposits[tokenId].token0;
-        address token1 = deposits[tokenId].token1;
-        TransferHelper.safeTransferFrom(token0, msg.sender, address(this), amountAdd0);
-        TransferHelper.safeTransferFrom(token1, msg.sender, address(this), amountAdd1);
+        return _increaseLiquidityCurrentRange(tokenId, mintable, amountToMint);
+    }
 
-        TransferHelper.safeApprove(token0, address(nonfungiblePositionManager), amountAdd0);
-        TransferHelper.safeApprove(token1, address(nonfungiblePositionManager), amountAdd1);
+    // @notice Transfers the NFT to the owner
+    // @param tokenId The id of the erc721
+    function retrieveNFT(uint256 tokenId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // remove information related to tokenId
+        delete deposits[tokenId];
+        // transfer ownership to original owner
+        INonfungiblePositionManager(nonfungiblePositionManager).safeTransferFrom(address(this), msg.sender, tokenId);
+    }
+
+    // @notice Increases liquidity in the current range
+    // @dev Pool must be initialized already to add liquidity
+    // @param tokenId The id of the erc721 token
+    // @param amount0 The amount to add of token0
+    // @param amount1 The amount to add of token1
+    function _increaseLiquidityCurrentRange(
+        uint256 tokenId,
+        address mintable,
+        uint256 amountToMint
+    )
+    private
+    returns (
+        uint128 liquidity,
+        uint256 amount0,
+        uint256 amount1
+    )
+    {
+        address token;
+
+        if (deposits[tokenId].token0 == mintable) {
+            token = deposits[tokenId].token1;
+        } else {
+            token = deposits[tokenId].token0;
+        }
+
+        IERC20Radiate(mintable).mint(address(this), amountToMint);
+        TransferHelper.safeTransferFrom(token, msg.sender, address(this), amountToMint);
+
+        TransferHelper.safeApprove(deposits[tokenId].token0, address(nonfungiblePositionManager), amountToMint);
+        TransferHelper.safeApprove(deposits[tokenId].token1, address(nonfungiblePositionManager), amountToMint);
 
         INonfungiblePositionManager.IncreaseLiquidityParams memory params =
         INonfungiblePositionManager.IncreaseLiquidityParams({
-            tokenId: tokenId,
-            amount0Desired: amountAdd0,
-            amount1Desired: amountAdd1,
-            amount0Min: 0,
-            amount1Min: 0,
-            deadline: block.timestamp
+        tokenId: tokenId,
+        amount0Desired: amountToMint,
+        amount1Desired: amountToMint,
+        amount0Min: 0,
+        amount1Min: 0,
+        deadline: block.timestamp
         });
 
         (liquidity, amount0, amount1) = INonfungiblePositionManager(nonfungiblePositionManager).increaseLiquidity(params);
@@ -250,16 +293,5 @@ contract LiquidityManager is IERC721Receiver, AccessControl {
         // send collected fees to owner
         TransferHelper.safeTransfer(token0, owner, amount0);
         TransferHelper.safeTransfer(token1, owner, amount1);
-    }
-
-    // @notice Transfers the NFT to the owner
-    // @param tokenId The id of the erc721
-    function retrieveNFT(uint256 tokenId) external {
-        // must be the owner of the NFT
-        require(msg.sender == deposits[tokenId].owner, 'Not the owner.');
-        // remove information related to tokenId
-        delete deposits[tokenId];
-        // transfer ownership to original owner
-        INonfungiblePositionManager(nonfungiblePositionManager).safeTransferFrom(address(this), msg.sender, tokenId);
     }
 }

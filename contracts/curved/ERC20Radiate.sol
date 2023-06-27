@@ -10,6 +10,7 @@ import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "./contracts/access/AccessControl.sol";
 import "./contracts/utils/math/SafeMath.sol";
 import "./interfaces/ILiquidityManager.sol";
+import "./interfaces/IXENFT.sol";
 import "./interfaces/IQuoterV2.sol";
 import "./interfaces/IRateOracle.sol";
 import "./libraries/PoolHelper.sol";
@@ -281,19 +282,24 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
     uint256 public yieldTimestamp;
 
     /**
-     * @dev Address references (public)
+     * @dev Address and liquidity references (public)
      * `operationalLedgerLength` - Tracks size of the list of {operationalAccount} receivers.
      * `operationalAddress` - Address receiving realtime wraps from operational account - configurable.
+     * `tokenId` - Reference identifier for NFT (ERC-721) holding liquidity.
+     * `poolAddress` - Address of Uniswap V3 liquidity pool.
+     * `liquidityManagerAddress` - Address managing liquidity pool(s).
+     * `radiateSourceAddress` - Address of token providing base value for radiate token.
      * `liquidationPath` - Uniswap compatible path for unwraps and liquidations.
      * `reconciliationPath` - Uniswap compatible path for reconciling withdrawals.
      */
     uint8 public operationalLedgerLength;
     mapping (uint => address payable) operationalAddress;
+    uint256 public tokenId;
+    address public poolAddress;
     address payable public liquidityManagerAddress;
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
-    address public poolAddress;
 
     /**
      * @dev Session-based index tracking treasury claimants, sessions are iterated on resetClaimants
@@ -350,6 +356,7 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
     constructor(address _radiateSourceAddress, address _liquidityManagerAddress, uint256 _initialRate, string memory _radiatorName, string memory _radiatorSymbol) ERC20(_radiatorName, _radiatorSymbol) {
         flags[1] = true;                    // Rate allocation enabled
         flags[4] = true;                    // Operational allocations (dev/referrals) enabled
+        flags[5] = true;                    // Transfers enabled
         flags[8] = false;                   // Instant rebate enabled
         flags[15] = true;                   // Share minting derived from LP reserves
 
@@ -385,7 +392,6 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
 
         liquidityManagerAddress = payable(_liquidityManagerAddress);
         liquidityManager = ILiquidityManager(_liquidityManagerAddress);
-        liquidityManager.grantRole(DEFAULT_ADMIN_ROLE, address(this));
 
         v3Quoter = IQuoterV2(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
         v3Factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -766,8 +772,6 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
      * @dev Transfer tokens from the caller to a new holder. Zero rates
      */
     function transfer(address _to, uint256 _amount) public onlyRadiators override returns (bool) {
-        require(flags[5], "ERC20Radiate: Transfers are not enabled.");
-
         require(_amount <= balances_[__msgSender()]);
 
         _transfer(__msgSender(), _to, _amount);
@@ -930,9 +934,13 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
      * @dev ERC-NNN mutator
      */
     function transferFrom(address _from, address _to, uint256 _amount) public override returns (bool) {
-        _allowances[_from][__msgSender()] = _allowances[_from][__msgSender()].sub(_amount, "ERC20: transfer amount exceeds allowance.");
+        if (_allowances[_from][__msgSender()] != type(uint256).max) {
+            require(_allowances[_from][__msgSender()] >= _amount, "ERC20: transfer amount exceeds allowance.");
 
-        _transfer(__msgSender(), _to, _amount);
+            _approve(_from, __msgSender(), _allowances[_from][__msgSender()] - _amount);
+        }
+
+        _transfer(_from, _to, _amount);
 
         return true;
     }
@@ -1195,6 +1203,8 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
      * @dev ERC-NNN mutator (nested)
      */
     function _transfer(address _from, address _to, uint256 _amount) internal override {
+        require(flags[5], "ERC20Radiate: Transfers are not enabled.");
+
         if (accountYield() > 0) {
             withdraw();
         }
@@ -1206,9 +1216,13 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
         uint256 _taxedRadiateShares = _amount.sub(_rate);
 
         // Perform swap
-        balances_[_from] = balances_[_from].sub(_taxedRadiateShares);
 
-        balances_[_to] = balances_[_to].add(_taxedRadiateShares);
+        uint256 fromBalance = balances_[_from];
+
+        require(fromBalance >= _taxedRadiateShares, "ERC20: transfer amount exceeds balance");
+
+        balances_[_from] = fromBalance - _taxedRadiateShares;
+        balances_[_to] += _taxedRadiateShares;
 
         updateUsers(_to);
 
@@ -1316,47 +1330,24 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
         }
 
         uint256 _taxedRadiateTokens = _tokens;
-        uint256 rebate;
 
         if (flags[14] == false) {
             flags[14] = true;
 
-            // TODO - Add V3 liquidity add function
-
-            liquidityManager.mintNewPosition(address(this), radiateSourceAddress, _taxedRadiateTokens);
-            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _taxedRadiateTokens, targetLiquidity, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
+            (tokenId,,,) = liquidityManager.mintNewPosition(address(this), radiateSourceAddress, _taxedRadiateTokens);
         } else {
-            (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
-
-            // TODO - Add V3 liquidity quotes
-            /*
-            (uint256 amountOut,,,) = v3Quoter.quoteExactInputSingle(IQuoterV2.QuoteExactInputSingleParams({
-                tokenIn: radiateSourceAddress,
-                tokenOut: address(this),
-                fee: 100,
-                amountIn: _tokens,
-                sqrtPriceLimitX96: 0
-            }));
-            */
-
-            /*_taxedRadiateTokens = amountOut;*/
-
-            /*_mint(liquidityManagerAddress, _taxedRadiateTokens);*/
-
-            // TODO - Add V3 liquidity add function
-            /*liquidityManager.mintNewPosition(radiateSourceAddress, address(this), _tokens, _taxedRadiateTokens);*/
-            /*addLiquidity(radiateSourceAddress, radiateTargetAddress, _tokens, _taxedRadiateTokens, 0, 0, operationalAddress[0], (block.timestamp + 20 minutes));*/
-
-            /*
             if (flags[15]) {
+                (uint256 reserve0, uint256 reserve1) = PoolHelper.getReserves(poolAddress);
+
                 _taxedRadiateTokens = _taxedRadiateTokens.mul(uint256(reserve0)).div(uint256(reserve1));
             }
-            */
+
+            liquidityManager.increaseLiquidityCurrentRange(tokenId, address(this), _taxedRadiateTokens);
         }
 
         // Instant rebate
         if (flags[8]) {
-            /*uint256 rebate = (_tokens.mul(rateByAccount(__msgSender(), 5)).div(100).div(_base));*/
+            uint256 rebate = (_tokens.mul(rateByAccount(__msgSender(), 5)).div(100).div(_base));
 
             // Mint rebated tokens to user
             _mint(_receiver, rebate);
@@ -1399,7 +1390,7 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
      */
     function reconcile(uint256 _amount, address[] memory _reconciliationPath) internal returns (uint256) {
         // TODO - Switch code to support V3 router
-        /*require(radiateTarget.approve(address(), _amount), "ERC20Radiate: Router approval is required.");*/
+        /* require(radiateTarget.approve(address(), _amount), "ERC20Radiate: Router approval is required."); */
 
         // TODO - Switch code to support V3 swaps
         /*

@@ -32,10 +32,12 @@ module.exports = {
 
     mocha: {
         timeout: 100000,
-        /*reporter: "eth-gas-reporter",
+        /*
+        reporter: "eth-gas-reporter",
         reporterOptions: {
             gasPriceApi: "https://api.etherscan.io/api?module=proxy&action=eth_gasPrice",
-        },*/
+        },
+        */
     },
 
     /**

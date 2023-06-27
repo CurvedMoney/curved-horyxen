@@ -34,12 +34,12 @@ interface ILiquidityManager {
         uint256 amount1
     );
 
-    // @notice Collects the fees associated with provided liquidity
+    // @notice Compounds the fees associated with provided liquidity
     // @dev The contract must hold the erc721 token before it can collect fees
     // @param tokenId The id of the erc721 token
     // @return amount0 The amount of fees collected in token0
     // @return amount1 The amount of fees collected in token1
-    function collectAllFees(uint256 tokenId) external returns (uint256 amount0, uint256 amount1);
+    function compoundFees(uint256 tokenId, address mintable) external returns (uint256 amount0, uint256 amount1);
 
     // @notice A function that decreases the current liquidity by half. An example to show how to call the `decreaseLiquidity` function defined in periphery.
     // @param tokenId The id of the erc721 token
@@ -54,8 +54,8 @@ interface ILiquidityManager {
     // @param amount1 The amount to add of token1
     function increaseLiquidityCurrentRange(
         uint256 tokenId,
-        uint256 amountAdd0,
-        uint256 amountAdd1
+        address mintable,
+        uint256 amountToMint
     )
     external
     returns (

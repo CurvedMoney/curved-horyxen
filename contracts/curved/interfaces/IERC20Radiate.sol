@@ -14,4 +14,17 @@ interface IERC20Radiate {
      * - the caller must have minter role.
      */
     function mint(address recipient, uint256 amountIn) external;
+
+    /**
+     * @dev Destroys `amount` tokens from `account`, reducing the
+     * total supply.
+     *
+     * Emits a {Transfer} event with `to` set to the zero address.
+     *
+     * Requirements:
+     *
+     * - msg.sender cannot be the zero address.
+     * - msg.sender must have at least `amount` tokens.
+     */
+    function burn(uint256 _amount) external;
 }
