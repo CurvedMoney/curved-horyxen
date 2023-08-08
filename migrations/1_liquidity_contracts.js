@@ -1,13 +1,19 @@
 const LiquidityManager = artifacts.require("LiquidityManager");
+const LiquidityEngine = artifacts.require("LiquidityEngine");
 
 module.exports = async function (deployer) {
-    /*const _liquidityContract = await LiquidityManager.deployed();
+    const _liquidityTargetAddress = "0xca41f293A32d25c2216bC4B30f5b0Ab61b6ed2CB";
+
+    /*
+    const _liquidityContract = await LiquidityManager.deployed();
 
     if (_liquidityContract) {
         console.log("\tLiquidity Manager deployed @", _liquidityContract.address, "\n\n");
     } else {
         await deployer.deploy(LiquidityManager);
-    }*/
+    }
+    */
 
     await deployer.deploy(LiquidityManager);
+    await deployer.deploy(LiquidityEngine, _liquidityTargetAddress);
 };
