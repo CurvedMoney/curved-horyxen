@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.7.6;
+pragma abicoder v2;
 
 interface IXEN {
     // INTERNAL TYPE TO DESCRIBE A XEN MINT INFO
@@ -23,6 +24,11 @@ interface IXEN {
 
     // PUBLIC CONVENIENCE GETTERS
     /**
+     * @dev current global rank from `GENESIS_RANK`
+     */
+    function globalRank() external view returns (uint256);
+
+    /**
      * @dev calculates gross Mint Reward
      */
     function getGrossReward(
@@ -30,7 +36,7 @@ interface IXEN {
         uint256 amplifier,
         uint256 term,
         uint256 eaa
-    ) public pure returns (uint256);
+    ) external pure returns (uint256);
 
     /**
      * @dev returns User Mint object associated with User account address
@@ -65,5 +71,5 @@ interface IXEN {
     /**
      * @dev burns XEN tokens and creates Proof-Of-Burn record to be used by connected DeFi services
      */
-    function burn(address user, uint256 amount) public;
+    function burn(address user, uint256 amount) external;
 }

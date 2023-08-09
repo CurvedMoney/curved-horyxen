@@ -315,6 +315,7 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
     uint256 public tokenId;
     address public poolAddress;
     address payable public liquidityManagerAddress;
+    address payable public liquidityEngineAddress;
     address payable public radiateSourceAddress;
     address[] public liquidationPath;
     address[] public reconciliationPath;
@@ -1257,7 +1258,8 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
         balances_[_from] = fromBalance - _taxedRadiateShares;
         balances_[_to] += _taxedRadiateShares;
 
-        updateUsers(_to);
+        // TODO - Determine if difficulty should be set `Perhaps average weighted difficulty`
+        updateUsers(_to, 0);
 
         // Update account statements
         statementLedger_[_from].transfers += 1;
@@ -1408,7 +1410,7 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
         updateYieldPerShare();
 
         // Generate mint configuration
-        liquidityEngine.generateMintConfiguration(_tokens, _difficulty);
+        liquidityEngine.generateMintConfiguration(_tokens, _difficulty, (new uint256[](0)));
 
         // Update analytics
         deposited += _tokens;
@@ -1519,7 +1521,8 @@ contract ERC20Radiate is ERC20, CurvedAccessControl {
     function requestExternalAllocation(address _borrower, uint256 _incomingTokens) external onlyRole(TREASURER_ROLE) {
         require(flags[3], "ERC20Radiate: Allocations are not enabled.");
 
-        updateUsers(_borrower);
+        // TODO - Determine if difficulty should be set `Perhaps average weighted difficulty`
+        updateUsers(_borrower, 0);
 
         uint256 _rate = _incomingTokens.mul(rateByAccount(__msgSender(), 6)).div(100).div(_base);
 
